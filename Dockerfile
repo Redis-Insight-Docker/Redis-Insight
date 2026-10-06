@@ -1,0 +1,89 @@
+# this dockerfile has two stages, a build stage and the executable stage.
+# the build stage is responsible for building the frontend, the backend,
+# and the frontend's static assets. ideally, we could build the frontend and backend
+# independently and in parallel in different stages, but there is a dependency
+# on the backend to build those assets. until we fix that, this approach is
+# the best way to minimize the number of node_module restores and build steps
+# while still keeping the final image small.
+
+FROM node:24.16.0-alpine AS build
+
+# update apk repository and install build dependencies
+RUN apk update && apk add --no-cache --virtual .gyp \
+        python3 \
+        py3-setuptools \
+        make \
+        git \
+        g++ \
+        gcompat
+
+# set workdir
+WORKDIR /usr/src/app
+
+# restore node_modules for front-end
+# .npmrc carries legacy-peer-deps=true, required for `npm ci` to resolve
+# the project's legacy peer dependencies.
+COPY package.json package-lock.json .npmrc ./
+COPY patches ./patches
+COPY redisinsight/ui/vite.config.mjs ./redisinsight/ui/
+COPY redisinsight/ui/src/config ./redisinsight/ui/src/config
+# --ignore-scripts skips the postinstall's `vite optimize` (the UI is built
+# later via build:ui); patch-package is still needed for the UI deps, so run it.
+RUN npm ci --ignore-scripts && npx patch-package
+
+# prepare backend by copying scripts/configs and installing node modules
+# this is required to build the static assets
+COPY configs ./configs
+COPY scripts ./scripts
+COPY redisinsight ./redisinsight
+RUN npm ci --prefix redisinsight/api
+
+# build the frontend, static assets, and backend api
+RUN npm run build:ui
+RUN npm run build:statics
+RUN npm run build:api
+
+# install backend _again_ to build native modules and drop dev dependencies.
+# NOTE: `yarn autoclean` (pruning docs/tests from node_modules) has no npm
+# equivalent and was dropped in the yarn->npm migration; the image is slightly
+# larger as a result. Revisit with node-prune if image size regresses.
+RUN npm ci --prefix redisinsight/api --omit=dev
+
+FROM node:24.16.0-alpine
+
+# runtime args and environment variables
+ARG NODE_ENV=production
+ARG RI_SEGMENT_WRITE_KEY
+ENV RI_SEGMENT_WRITE_KEY=${RI_SEGMENT_WRITE_KEY}
+ENV NODE_ENV=${NODE_ENV}
+ENV RI_SERVE_STATICS=true
+ENV RI_BUILD_TYPE='DOCKER_ON_PREMISE'
+ENV RI_APP_FOLDER_ABSOLUTE_PATH='/data'
+
+# this resolves CVE-2023-5363
+# TODO: remove this line once we update to base image that doesn't have this vulnerability
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
+
+# set workdir
+WORKDIR /usr/src/app
+
+# copy artifacts built in previous stage to this one
+COPY --from=build --chown=node:node /usr/src/app/redisinsight/api/dist ./redisinsight/api/dist
+COPY --from=build --chown=node:node /usr/src/app/redisinsight/api/node_modules ./redisinsight/api/node_modules
+COPY --from=build --chown=node:node /usr/src/app/redisinsight/ui/dist ./redisinsight/ui/dist
+
+# folder to store local database, plugins, logs and all other files
+RUN mkdir -p /data && chown -R node:node /data
+
+# copy the docker entry point script and make it executable
+COPY --chown=node:node ./docker-entry.sh ./
+RUN chmod +x docker-entry.sh
+
+# since RI is hard-code to port 5540, expose it from the container
+EXPOSE 5540
+
+# don't run the node process as root
+USER node
+
+# serve the application 🚀
+ENTRYPOINT ["./docker-entry.sh", "node", "redisinsight/api/dist/src/main"]

@@ -1,0 +1,101 @@
+import React, { ReactElement, useEffect } from 'react'
+import { Provider } from 'react-redux'
+import { I18nextProvider } from 'react-i18next'
+import { useAppSelector } from 'uiSrc/slices/hooks'
+import i18n from 'uiSrc/i18n'
+
+import { Route, Switch } from 'react-router-dom'
+import { store } from 'uiSrc/slices/store'
+import { appInfoSelector } from 'uiSrc/slices/app/info'
+import { removePagePlaceholder } from 'uiSrc/utils'
+import MonacoLanguages from 'uiSrc/components/monaco-laguages'
+import AppInit from 'uiSrc/components/init/AppInit'
+import { Page, PageBody } from 'uiSrc/components/base/layout/page'
+import { useSystemThemeListener } from 'uiSrc/services/hooks/useSystemThemeListener'
+import { useSentryMainSync } from 'uiSrc/services/hooks/useSentryMainSync'
+import { SentryErrorBoundary } from 'uiSrc/components/error-boundary'
+import { Pages, Theme } from './constants'
+import { themeService } from './services'
+import {
+  Config,
+  GlobalSubscriptions,
+  NavigationMenu,
+  Notifications,
+  ShortcutsFlyout,
+} from './components'
+import { ThemeProvider } from './contexts/themeContext'
+import MainComponent from './components/main/MainComponent'
+import MonacoEnvironmentInitializer from './components/MonacoEnvironmentInitializer/MonacoEnvironmentInitializer'
+import GlobalDialogs from './components/global-dialogs'
+import GlobalAzureAuth, {
+  AzureAuthCallbackPage,
+} from './components/global-azure-auth'
+import NotFoundErrorPage from './pages/not-found-error/NotFoundErrorPage'
+
+import themeDark from './styles/themes/dark_theme/darkTheme.scss?inline'
+import themeLight from './styles/themes/light_theme/lightTheme.scss?inline'
+
+import './styles/elastic.css'
+import './App.scss'
+
+themeService.registerTheme(Theme.Dark, themeDark)
+themeService.registerTheme(Theme.Light, themeLight)
+
+const AppWrapper = ({ children }: { children?: ReactElement[] }) => (
+  <I18nextProvider i18n={i18n}>
+    <Provider store={store}>
+      <SentryErrorBoundary>
+        <ThemeProvider>
+          <AppInit>
+            <App>{children}</App>
+          </AppInit>
+        </ThemeProvider>
+      </SentryErrorBoundary>
+    </Provider>
+  </I18nextProvider>
+)
+const App = ({ children }: { children?: ReactElement[] }) => {
+  const { loading: serverLoading } = useAppSelector(appInfoSelector)
+  useEffect(() => {
+    if (!serverLoading) {
+      removePagePlaceholder()
+    }
+  }, [serverLoading])
+  useSystemThemeListener()
+  useSentryMainSync()
+  return (
+    <div className="main-container">
+      <MonacoEnvironmentInitializer />
+      <Switch>
+        <Route exact path={Pages.notFound} component={NotFoundErrorPage} />
+        <Route
+          exact
+          path="/azure-auth-callback"
+          component={AzureAuthCallbackPage}
+        />
+        <Route
+          path="*"
+          render={() => (
+            <>
+              <Page className="main">
+                <GlobalDialogs />
+                <GlobalSubscriptions />
+                <NavigationMenu />
+                <PageBody component="main">
+                  <MainComponent />
+                </PageBody>
+              </Page>
+              <Notifications />
+              <Config />
+              <ShortcutsFlyout />
+              <MonacoLanguages />
+              <GlobalAzureAuth />
+              {children}
+            </>
+          )}
+        />
+      </Switch>
+    </div>
+  )
+}
+export default AppWrapper
